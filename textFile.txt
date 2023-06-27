@@ -1,0 +1,1 @@
+Compared to a wideband single-carrier system with a high symbol rate, OFDM allows data to be modulated onto many narrowband subcarriers at lower symbol rates.  This greatly simplifies receiver equalization and reduces the effects of multipath interference.
