@@ -8,7 +8,7 @@ fs = 8e3;  % sample rate of ofdm signal
 % GENERATE CHIRP SIGNAL FOR SYNCHRONIZATION
 N = 8000;  %number of samples for chirp
 t = (0:7999)/fs;  % time samples for chirp
-f0 = 300;
+f0 = 1000;
 f1 = 3000;
 % f_i = f0 + (f1-f0)*t;  % instantaneous frequency of chirp
 pha_i = 2*pi*f0*t + pi*(f1-f0)*t.^2;  % instantaneous phase of chirp (2pi times integral of instantaneous freq)
@@ -27,7 +27,7 @@ tdvec = zeros(1,tdsamples);
 % DEFINE VARIABLES
 Nchar = 256;  % number of characters, make power of 2
 Nbits = Nchar * 8;  % number of bits
-Nfft_2 = Nbits + 1024;  % half of length of FFT, bits plus guard freq bins
+Nfft_2 = Nbits/4 + 512;  % half of length of FFT, bits plus guard freq bins
 
 
 % GET MESSAGE FROM TXT FILE, CONVERT TO BITS
@@ -60,50 +60,65 @@ end
 
 
 % MAKE PILOT VECTOR OF RANDOM PHASE ROTATIONS FOR THE FOURIER COEFFICIENTS
-xp = randn(1,Nfft_2);  % vector of length Nfft_2 with normally distributed random numbers
-xp = xp / max(xp) * 12;  % normalize to maximum of 12
-xp = exp(1i*xp);  % create Fourier coefficients for pilot vector
-xp(1:512) = 0; xp(end-511:end) = 0; % zero out first 512 and last 512 coefficients
+% random phase rotation reduces PAPR (peak-to-average power ratio) compared to all pilots having the same phase
+Xp = randn(1,Nfft_2);  % vector of length Nfft_2 with normally distributed random numbers
+Xp = Xp / max(Xp) * 12;  % normalize to maximum of 12
+Xp = exp(1i*Xp);  % create Fourier coefficients for pilot vector
+Xp(1:256) = 0; Xp(end-255:end) = 0; % zero out first 256 and last 256 coefficients
 
 
 % MAKE BPSK DATA VECTOR,  1 = 1,  0 = -1
-xd = txbits;  % put binary vector here N = 2048 bits
-xd(xd == 0) = -1;
-xd = [zeros(1,512)   xd    zeros(1,512) ];  %512 guard on each side
+Xd = txbits;  % put binary vector here N = 2048 bits
+Xd(Xd == 0) = -1;
 
 
-% RELATE DATA VECTOR TO PILOT VECTOR
-xd = xp .* xd;
+% SPLIT DATA UP INTO 4 SYMBOLS
+SYMS = zeros(5,1024);  % array for symbol Fourier coefficients, 5 symbols (rows), 1024 coefficients (columns)
+
+SYMS(1,:) = Xp;  % make first symbol the pilot
+
+for k = [2 3 4 5]  % loop over each data symbol
+    SYMS( k, 257:(end-256) ) = Xd( (512*(k-2)+1) : (512*(k-1)) );  % set data symbol Fourier coefficients, with 256 null coefficients on each side
+    SYMS(k,:) = SYMS(k-1,:) .* SYMS(k,:);  % relate phase to previous symbol
+end
 
 
 % PREPARE PILOT AND DATA VECTORS FOR IFFT
-xp1 = conj( xp(end:-1:2)); % reverse and conjugate pilot vector
-xp = [xp1 xp]; % concatenate reverse-conjugate pilot with pilot (to make IFFT purely real)
+SYMS_RC = zeros(5,1023);  % array for reverse-conjugated symbol Fourier coefficients
 
-xd1 = conj(xd(end:-1:2)); % reverse and conjugate data vector
-xd = [xd1 xd]; % concatenate reverse-conjugate data with data (to make IFFT purely real)
+for k = [1 2 3 4 5]  % loop over each symbol
+    SYMS_RC(k,:) = conj( SYMS(k,end:-1:2) ); % reverse and conjugate symbol Fourier coefficicents
+end
 
-
-% GENERATE PILOT TIME VECTOR
-xp = ifftshift(xp);  % rearrage zero-shifted Fourier coeffients to standard format for IFFT
-xp = ifft(xp);  % IFFT to synthesize time-domain pilot vector
-xp = xp / max(abs(xp));  % normalize to 1
+SYMS = [SYMS SYMS_RC];   % concatenate reverse-conjugate symbols with symbols (to make IFFTs purely real)
 
 
-% GENERATE DATA TIME VECTOR
-xd = ifftshift(xd); % rearrage zero-shifted Fourier coeffients to standard format for IFFT
-xd = ifft(xd);  % IFFT to synthesize time-domain data vector
-xd = xd / max(abs(xd));  % normalize to 1
+% GENERATE SYMBOL TIME VECTORS
+syms = zeros(5, 2047);  % array to store symbol time vectors
+
+for k = [1 2 3 4 5]  % loop over each symbol
+    syms(k,:) = ifft( SYMS(k,:) );  % IFFT to synthesize time-domain symbol
+    syms(k,:) = syms(k,:) / max( abs(syms(k,:) ) );  % normalize to 1
+end
 
 
 % CONCATENATE TIME SIGNALS
-xt = [tdvec chirp guard xp xp xd xd tdvec];
-% note: pilot and data signal are each repeated, representing an extreme case of cyclic prefixing
+syms = [syms syms];  % repeat each symbol in the time domain, representing an extreme case of cyclic prefixing
 % cyclic prefixing provides stronger immunity from errors due to multipath and imprecise synchronization
+
+symvec = reshape(syms',1,[]);  % reshape time-domain symbols into a single row vector
+
+xt = [tdvec chirp guard symvec tdvec];  % put everything together
 
 
 % FILTER OUTPUT TO ENSURE BANDWIDTH, REDUCE OUT OF BAND SIGNALS
-hlpf = fir1(64,0.9);  % FIR filter impulse response, 64th order, low-pass with cutoff of 0.9 rad/sample (3.6 kHz)
+fc_lo = 975;  % low cutoff frequency in Hz
+fc_hi = 3025;  % high cutoff frequency in Hz
+
+rsc_lo = fc_lo * 2 / 8000;  % convert low cutoff frequency to rads/sample/pi
+rsc_hi = fc_hi * 2 / 8000;  % convert high cutoff frequency to rads/sample/pi
+
+hlpf = fir1(512,[rsc_lo rsc_hi]);  % FIR filter impulse response, 512th order, bandpass
 xt = conv(hlpf,xt);  % convolve signal with FIR filter impulse response
 xt = xt / max(abs(xt));  % normalize to 1
 
@@ -126,40 +141,14 @@ legend('real','imag')
 
 
 % PLOT MAGNITUDE SPECTRUM OF PILOT
-Xp = fft(xp);
-Xp = Xp( 1:floor(end/2) );
-
 figure(2)
 plot(abs(Xp))
 title('Magnitude Spectrum of Pilot')
 xlabel('Fourier coefficient')
 
-Xd = fft(xd);
-Xd = Xd( 1:floor(end/2) );
 
+% CALCULATE PEAK-TO-AVERAGE POWER RATIO (PAPR) OVER OFDM SYMBOLS
+pwr_i = xt(24512:44992).^2;  % array of instantaneous power during OFDM symbols
 
-det = angle(Xp ./ Xd ); % phase difference between pilot and data
-
-det = abs(det);
-n = length(det);
-f = linspace(0,fs/2,n);
-
-thres = pi/2;
-
-% det = ( det >= thres) .* 1   +  (det < thres) .* 0;
-
-
-figure(3)
-plot(f,det)
-title('phase results')
-xlabel('frequency')
-ylabel('phase')
-
-
-bits = det(513:end-511);
-
-figure(4)
-plot(bits)
-title('bits')
-xlabel('bit number')
-ylabel('bit phase')
+PAPR = max(pwr_i)/mean(pwr_i)  % PAPR in absolute units (W/W)
+PAPR_db = 10*log10(PAPR)  % PAPR in dB

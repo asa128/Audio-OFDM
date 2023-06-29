@@ -29,7 +29,7 @@ end
 % GENERATE CHIRP SIGNAL FOR SYNCHRONIZATION
 N = 8000;  % number of samples for chirp
 t = (0:7999)/fs;  % time samples for chirp
-f0 = 300;
+f0 = 1000;
 f1 = 3000;
 % f_i = f0 + (f1-f0)*t;  % instantaneous frequency of chirp
 pha_i = 2*pi*f0*t + pi*(f1-f0)*t.^2;  % instantaneous phase of chirp (2pi times integral of instantaneous freq)
@@ -37,19 +37,24 @@ chirp = sin(pha_i);  % generate chirp
 
 Nguard = 512;   % time between pulse and preamble fft data
 
+
 % DEFINE VARIABLES
 Nchar = 256;  % number of characters, make power of 2
 Nbits = Nchar * 8;  % number of bits
-Nfft_2 = Nbits + 1024;  % half of length of FFT, bits plus guard freq bins
+Nfft_2 = Nbits/4 + 512;  % half of length of FFT, bits plus guard freq bins
 Nfft = (2*Nfft_2)  - 1 ;  % actual length of FFT, due to conjugate symmetry
-
-
-sigtime = Nguard + 2*Nfft + 2*Nfft + 2*Nguard;  % time duration, in samples, of desired signal
 
 
 % UTILIZE CHIRP FOR SYNCHRONIZATION
 hpw = conj(chirp(end:-1:1)); % time reverse and conjugate chirp sync pulse
 xdet = conv(hpw,x);  %convolve signal with reverse-conjugated chirp
+[maxv, maxi] = max(abs(xdet));  % determine max value and index from detection signal
+
+% determine start and end samples for desired portion of audio
+xstart = maxi ;
+sigtime = Nguard + 2*Nfft + 4*2*Nfft + 2*Nguard;  % time duration, in samples, of desired signal
+xend = xstart + sigtime ;
+
 
 % PLOT SIGNAL CONVOLVED WITH REVERSE-CONJUGATE CHIRP
 figure(1)
@@ -57,14 +62,6 @@ plot(xdet)
 title('chirp detection')
 xlabel('sample')
 ylabel('x[n] * chirp*[n]')
-
-
-[maxv, maxi] = max(abs(xdet));  % determine max value and index from detection signal
-
-
-% determine start and end samples for desired portion of audio
-xstart = maxi ;
-xend = xstart + sigtime ;
 
 
 % PLOT SIGNAL AND DETECTED CHIRP END LOCATION
@@ -84,51 +81,53 @@ legend('signal','detected chirp end location')
 x = x(xstart:xend);  % obtain desired portion of audio
 
 
-% EXTRACT PILOT TIME SIGNAL
-xp0 = Nguard  + round(0.8*Nfft) + 1;  % start sample for pilot
-xp1 = xp0 + Nfft - 1;  % end sample for pilot
-xp = x(xp0:xp1); % extract pilot from audio
+% EXTRACT TIME SIGNALS FOR EACH SYMBOL
+sym_start = zeros(1,5);  % symbol start times
+sym_end = zeros(1,5);  % symbol end times
+syms = zeros(5,2047);  % array for time domain symbols, each symbol is a row
 
-
-% EXTRACT DATA TIME SIGNAL
-xd0 =  Nguard + 2*Nfft + round(0.8*Nfft) + 1;  % start sample for data
-xd1 = xd0 + Nfft - 1;  % end sample for data
-xd = x(xd0:xd1);  % extract data from audio
+for k = [1 2 3 4 5]  % loop over each symbol
+    sym_start(k) = Nguard  + 2*(k-1)*Nfft + round(0.8*Nfft) + 1;
+    sym_end(k) = sym_start(k) + Nfft - 1;
+    syms(k,:) = x(sym_start(k):sym_end(k));
+end
 
 
 % PLOT EXTRACTED SIGNALS
 figure(3)
-x_plot = x;
-xp_plot = zeros(1,length(x));
-xp_plot(xp0:xp1) = 1;  % window for pilot FFT
-xd_plot = zeros(1,length(x));
-xd_plot(xd0:xd1) = 1;  % window for data FFT
-plot(x_plot);
+fft_win = zeros(1,length(x));
+for k = [1 2 3 4 5]
+    fft_win(sym_start(k):sym_end(k)) = 1;  % windows for FFTs
+end
+
+plot(x);
 hold on
-plot(xp_plot);
-plot(xd_plot);
+plot(fft_win);
 hold off
 title('Audio samples after chirp detection pulse')
 xlabel('Sample')
 ylabel('x[n]')
-legend('received signal','portion used for pilot FFT', 'portion used for data FFT')
+legend('received signal', 'windows used for FFTs')
 
 
 % COMPUTE PILOT AND DATA SIGNAL FOURIER COEFFICIENTS WITH FFT
-Xp = fft(xp);
-Xp = Xp( 1:floor(end/2) );  % keep only first half of Fourier coefficients
+SYMS = zeros(5,2047);
 
-Xd = fft(xd);
-Xd = Xd( 1:floor(end/2) );  % keep only first half of Fourier coefficients
+for k = [1 2 3 4 5]  % loop over each symbol
+    SYMS(k,:) = fft( syms(k,:) );  % FFT
+end
+
+
+SYMS = SYMS(:,1:floor(end/2));  % keep only first half of Fourier coefficients
 
 
 % PLOT PILOT AND DATA SPECTRA
-n = length(Xd);
+n = length( SYMS(1,:) );
 fvec = linspace(0,fs/2,n);
 figure(4)
-plot(fvec,20*log10(abs(Xp)))
+plot(fvec,20*log10(abs( SYMS(1,:) )))
 hold on
-plot(fvec,20*log10(abs(Xd)))
+plot(fvec,20*log10(abs( SYMS(2,:) )))
 hold off
 title('Pilot and data spectra')
 xlabel('frequency')
@@ -137,10 +136,17 @@ legend('Pilot FFT', 'Data FFT');
 
 
 % OBTAIN PHASE FOR EACH BIT
-det = abs( angle(Xp ./ Xd) );  % compute absolute phase difference between pilot and data Fourier coefficients
+det = zeros(4,1023);
 
-det = det(513:end);  % discard first 512 decoded bits (corresponding to nulled subcarriers)
-det = det(1:Nbits);  % keep only bits that were transmitted
+% compute abosolute phase difference between successive symbols
+for k = [2 3 4 5]  % loop over each data symbol
+    det(k-1,:) = abs( angle( SYMS(k-1,:) ./ SYMS(k,:) ) );  % calculate absolute phase difference from previous symbol
+end
+
+det = det(:,257:end);  % discard first 256 bits of each data symbol (corresponding to nulled subcarriers)
+det = det(:,1:Nbits/4);  % keep only bits that were transmitted (512 bits per data symbol)
+
+det = reshape(det',1,[]);  % reshape into single row vector
 
 
 % PLOT DECODED BIT PHASES
