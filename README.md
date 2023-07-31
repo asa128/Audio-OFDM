@@ -1,4 +1,8 @@
 # Audio-OFDM
+
+
+## Description
+
 This software consists of a transmitter and receiver to transmit text messages over audible spectrum (~1-3 kHz) using orthogonal frequency division multiplexing (OFDM).
 OFDM is used in many wireless applications, including 5G NR, 4G LTE, and Wi-Fi.
 This project is based on DrSDR's Audio-OFDM (DrSDR/Audio-OFDM) but has been heavily modified.
@@ -20,7 +24,10 @@ The reason for using the chirp signal is described by this video https://www.you
 A steep (512th order) bandpass filter is used to greatly reduce out of band emissions.
 The passband of this filter is 975 - 3025 Hz.
 
-ofdmTX_audio.m  =  Reads in a text file (up to 256 characters) and generates a WAV file with the chirp pulse and OFDM symbols.
-ofdmRX_Audio.m  =  Reads in a WAV file and decodes the OFDM symbols back to text.  Displays the decoded text in a window and the command line.
 
-Note:  This algorithm does not require the input file to be an exact output file from ofdmTX_audio.m.  A microphone recording, even with some distortions, should be sufficient.
+## Files
+
+NOTE: This algorithm does not require the input file to be an exact output file from ofdmTX_audio.m.  A microphone recording, even with some distortions, should be sufficient.
+
+* **ofdmTX_audio.m** - Reads in a text file (up to 256 characters) and generates a WAV file with the chirp pulse and OFDM symbols.
+* **ofdmRX_Audio.m** - Reads in a WAV file and decodes the OFDM symbols back to text.  Displays the decoded text in a window and the command line.
