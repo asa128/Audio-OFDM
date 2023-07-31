@@ -31,3 +31,5 @@ NOTE: This algorithm does not require the input file to be an exact output file 
 
 * **ofdmTX_audio.m** - Reads in a text file (up to 256 characters) and generates a WAV file with the chirp pulse and OFDM symbols.
 * **ofdmRX_Audio.m** - Reads in a WAV file and decodes the OFDM symbols back to text.  Displays the decoded text in a window and the command line.
+* **ofdmtest256Char8khzAudio.wav** - sample WAV file of transmitter output/receiver input
+* **textFile.txt** - sample text file for transmitter input
