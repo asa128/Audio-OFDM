@@ -3,11 +3,17 @@
 clear
 close all
 
+cp_duration = 0.5;  % portion of each symbol used for cyclic prefix (must be >= 0 and <= 1)
+% minimum cp_duration of 0.26 is recommend if hard_bpf is true, due to filtering smearing the time domain
+% use higher cp_duration to better handle environments with multipath interference (echoes)
+
+hard_bpf = true;  % hard bandpass filter to reduce out of band emissions
+
 fs = 8e3;  % sample rate of ofdm signal 
 
 % GENERATE CHIRP SIGNAL FOR SYNCHRONIZATION
 N = 8000;  %number of samples for chirp
-t = (0:7999)/fs;  % time samples for chirp
+t = (0:(N-1))/fs;  % time samples for chirp
 f0 = 1000;
 f1 = 3000;
 % f_i = f0 + (f1-f0)*t;  % instantaneous frequency of chirp
@@ -28,6 +34,8 @@ tdvec = zeros(1,tdsamples);
 Nchar = 256;  % number of characters, make power of 2
 Nbits = Nchar * 8;  % number of bits
 Nfft_2 = Nbits/4 + 512;  % half of length of FFT, bits plus guard freq bins
+Nfft = (2*Nfft_2)  - 1 ;  % actual length of FFT, due to conjugate symmetry
+cp_duration = round(cp_duration * Nfft) / Nfft;  % turn CP duration into fraction related to FFT length, required for proper CP insertion
 
 
 % GET MESSAGE FROM TXT FILE, CONVERT TO BITS
@@ -101,27 +109,46 @@ for k = [1 2 3 4 5]  % loop over each symbol
     syms(k,:) = syms(k,:) / max( abs(syms(k,:) ) );  % normalize to 1
 end
 
-
 % CONCATENATE TIME SIGNALS
-syms = [syms syms];  % repeat each symbol in the time domain, representing an extreme case of cyclic prefixing
+syms = [syms(:, (Nfft - round(Nfft*cp_duration) + 1) :end) syms];  % repeat each symbol in the time domain, representing an extreme case of cyclic prefixing
 % cyclic prefixing provides stronger immunity from errors due to multipath and imprecise synchronization
 
 symvec = reshape(syms',1,[]);  % reshape time-domain symbols into a single row vector
 
 xt = [tdvec chirp guard symvec tdvec];  % put everything together
 
+xt_unfiltered = xt;
 
 % FILTER OUTPUT TO ENSURE BANDWIDTH, REDUCE OUT OF BAND SIGNALS
-fc_lo = 975;  % low cutoff frequency in Hz
-fc_hi = 3025;  % high cutoff frequency in Hz
+if(hard_bpf)
+    fir_length = 512;  % FIR filter length in samples
 
-rsc_lo = fc_lo * 2 / 8000;  % convert low cutoff frequency to rads/sample/pi
-rsc_hi = fc_hi * 2 / 8000;  % convert high cutoff frequency to rads/sample/pi
+    fc_lo = 975;  % low cutoff frequency in Hz
+    fc_hi = 3025;  % high cutoff frequency in Hz
+    
+    rsc_lo = fc_lo * 2 / 8000;  % convert low cutoff frequency to rads/sample/pi
+    rsc_hi = fc_hi * 2 / 8000;  % convert high cutoff frequency to rads/sample/pi
 
-hlpf = fir1(512,[rsc_lo rsc_hi]);  % FIR filter impulse response, 512th order, bandpass
-xt = conv(hlpf,xt);  % convolve signal with FIR filter impulse response
+    hlpf = fir1(fir_length,[rsc_lo rsc_hi]);  % FIR filter impulse response, 512th order, bandpass
+    xt = conv(hlpf,xt);  % convolve signal with FIR filter impulse response
+
+    xt_unfiltered = [zeros(1,fir_length/2) xt_unfiltered zeros(1,fir_length/2)];  % pad unfiltered signal to make it equal length for fft
+end
+
+
+% CALCULATE AND PLOT FFT OF UNFILTERED AND FILTERED SIGNALS
+fft_unfiltered = 10*log10( abs( fft(xt_unfiltered).^2 ) );
+fft_filtered = 10*log10( abs( fft(xt).^2 ) );
+
+figure(1)
+plot(1:1:length(fft_filtered), fft_filtered, 1:1:length(fft_unfiltered), fft_unfiltered)
+title('PSD of TX Signal')
+xlabel('FFT index')
+ylabel('Relative dB')
+legend('filtered', 'unfiltered')
+
+
 xt = xt / max(abs(xt));  % normalize to 1
-
 
 % WRITE TO FILE
 datafile = real(xt).';  % convert time signal from row vector to column vector for audiowrite
@@ -129,7 +156,7 @@ audiowrite('ofdmtest256Char8khzAudio.wav',datafile,fs,'BitsPerSample',16);  % wr
 
 
 % PLOT TRANSMITTED SIGNAL
-figure(1)
+figure(2)
 plot(real(xt))
 hold on
 plot(imag(xt))
@@ -141,7 +168,7 @@ legend('real','imag')
 
 
 % PLOT MAGNITUDE SPECTRUM OF PILOT
-figure(2)
+figure(3)
 plot(abs(Xp))
 title('Magnitude Spectrum of Pilot')
 xlabel('Fourier coefficient')
