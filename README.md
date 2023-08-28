@@ -20,6 +20,7 @@ Near the top of each code file, this cp_duration can be adjusted from 0 (0% of t
 Cylic prefixing reduces the effects of multipath interference (echos), slightly incorrect receiver synchronization, and distortions at the symbol change times caused by the bandpass filter.
 
 A chirp pulse before the pilot symbol is used for synchronization, so the receiver knows exactly when to begin decoding.
+A matched filter with the same chirp is utilized in the receiver to accomplish this task.
 The reason for using the chirp signal is described by this video https://www.youtube.com/watch?v=Jyno-Ba_lKs
 
 A steep (512th order) bandpass filter is used to greatly reduce out of band emissions.
