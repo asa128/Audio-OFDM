@@ -35,7 +35,12 @@ NOTE: This algorithm does not require the input file to be an exact output file 
 * **ofdmRX_Audio.m** - Reads in a WAV file and decodes the OFDM symbols back to text.  Displays the decoded text in a window and the command line.  Also displays average and peak phase error in radians (worst case is 1.57, i.e. 180°).
 * **ofdmtest256Char8khzAudio.wav** - sample WAV file of transmitter output/receiver input
 * **textFile.txt** - sample text file for transmitter input
-* **ofdmFullSystem.m** - simulates the full transmitter and receiver system in one run without needing to manually select the output audio.
-* **ofdmFullSystem_manytrials.m** - simulates the full transmitter and receiver system over many runs to more accurately calulate the average and peak phase errors.
+* **ofdmFullSystem.m** - simulates the full transmitter and receiver system in one run without needing to manually select the output audio.*
+* **ofdmFullSystem_manytrials.m** - simulates the full transmitter and receiver system over many runs to more accurately calulate the average and peak phase errors.*
+* **spectrogram_filter_off.PNG** - spectrogram of signal without bandpass filtering applied.  The symbol changes are noticeable by the vertical "pipes".**
+* **spectrogram_filter_on.PNG** - spectrogram of signal with bandpass filtering applied.**
+* **spectrogram_settings_Audacity.PNG** - settings used in Audacity to generate spectrograms.
 
-Note that average and peak phase errors will likely be lower in the FullSystem scripts compared to ofdm_RX_Audio because 16-bit quantization is not applied to the receive signal in the FullSystem scripts.
+*Note that average and peak phase errors will likely be lower in the FullSystem scripts compared to ofdm_RX_Audio because 16-bit quantization is not applied to the receive signal in the FullSystem scripts.
+
+**A cylic prefix of 0.5 (0.128 s) was used to generate the spectrograms.
