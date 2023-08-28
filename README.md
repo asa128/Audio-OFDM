@@ -38,6 +38,7 @@ NOTE: This algorithm does not require the input file to be an exact output file 
 * **ofdmFullSystem.m** - simulates the full transmitter and receiver system in one run without needing to manually select the output audio.*
 * **ofdmFullSystem_manytrials.m** - simulates the full transmitter and receiver system over many runs to more accurately calulate the average and peak phase errors.*
 * **spectrogram_filter_off.PNG** - spectrogram of signal without bandpass filtering applied.  The symbol changes are noticeable by the vertical "pipes".**
+* **spectrogram_filter_off_labeled.png** - spectrogram of (unfiltered) signal with chirp, pilot symbol, and data symbols labeled.
 * **spectrogram_filter_on.PNG** - spectrogram of signal with bandpass filtering applied.**
 * **spectrogram_settings_Audacity.PNG** - settings used in Audacity to generate spectrograms.
 
